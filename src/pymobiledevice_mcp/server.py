@@ -1,6 +1,7 @@
-"""MCP server para diagnóstico de memória e performance de iPhone via pymobiledevice3.
+"""MCP server para diagnóstico e melhoria de memória/performance de iPhone via pymobiledevice3.
 
-Todas as ferramentas são somente leitura: nada é instalado, apagado ou alterado no aparelho.
+As ferramentas de diagnóstico são somente leitura. As de melhoria (actions.py) só rodam com
+PMD3_MCP_ALLOW_ACTIONS=1 e confirm=True.
 """
 from __future__ import annotations
 
@@ -9,18 +10,26 @@ import os
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from . import __version__
+from . import __version__, actions
 from .runner import capture_stream, run_pmd3, truncate
 
 mcp = MCPServer(
     name="pymobiledevice-mcp",
     version=__version__,
     instructions=(
-        "Diagnóstico somente leitura de iPhone/iPad conectado via USB. "
+        "Diagnóstico e melhoria de iPhone/iPad conectado via USB. "
         "Comece por list_devices e device_info. Para CPU/memória por processo use "
         "process_cpu_memory e system_stats, que exigem Modo Desenvolvedor e, no iOS 17+, "
         "`pymobiledevice3 remote tunneld` rodando como Administrador. "
-        "Relatórios de crash com 'JetsamEvent' indicam apps encerrados por falta de memória."
+        "Relatórios de crash com 'JetsamEvent' indicam apps encerrados por falta de memória. "
+        "Ferramentas de melhoria (uninstall_app, kill_process, clear_crash_reports, "
+        "restart_device) alteram o aparelho: primeiro chame sem confirm para ver a prévia, "
+        "explique ao usuário o que será feito e só use confirm=true após ele aprovar "
+        "explicitamente cada ação. No iOS, encerrar apps em segundo plano raramente melhora "
+        "a performance; os ganhos reais costumam vir de liberar armazenamento (iOS fica lento "
+        "com menos de ~10% livre), remover apps que causam crashes/Jetsam, reiniciar e "
+        "atualizar o iOS. Recomende ajustes que só o usuário pode fazer em Ajustes "
+        "(Atualização em 2º Plano, Reduzir Movimento, Descarregar Apps Não Usados)."
     ),
 )
 
@@ -115,6 +124,59 @@ def system_stats(udid: str | None = None) -> str:
     return run_pmd3(
         ["developer", "dvt", "sysmon", "system", *_tunnel_args(udid)],
         timeout=60,
+    )
+
+
+@mcp.tool(annotations=READ_ONLY)
+def installed_apps(udid: str | None = None) -> str:
+    """Apps instalados pelo usuário, ordenados pelo espaço ocupado (app + dados)."""
+    return actions.installed_apps(_udid_args(udid))
+
+
+# --- Ferramentas de melhoria (alteram o aparelho) ----------------------------
+
+DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False)
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+def uninstall_app(bundle_id: str, confirm: bool = False, udid: str | None = None) -> str:
+    """Desinstala um app do usuário (apaga os dados dele). Sem confirm=true, só mostra a prévia."""
+    return actions.uninstall_app(bundle_id, confirm, _udid_args(udid))
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+def kill_process(pid: int, confirm: bool = False, udid: str | None = None) -> str:
+    """Encerra um processo travado ou que consome muita CPU/memória (requer Modo Desenvolvedor).
+
+    Sem confirm=true, só mostra a prévia.
+    """
+    return actions.kill_process(pid, confirm, _tunnel_args(udid))
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+def clear_crash_reports(confirm: bool = False, udid: str | None = None) -> str:
+    """Apaga os relatórios de crash do aparelho (útil para medir do zero após uma correção).
+
+    Sem confirm=true, só mostra a prévia.
+    """
+    return actions.clear_crash_reports(confirm, _udid_args(udid))
+
+
+@mcp.tool(annotations=DESTRUCTIVE)
+def restart_device(confirm: bool = False, udid: str | None = None) -> str:
+    """Reinicia o aparelho (libera memória e encerra processos presos). Sem confirm=true, só prévia."""
+    return actions.restart_device(confirm, _udid_args(udid))
+
+
+@mcp.prompt()
+def diagnosticar_e_melhorar() -> str:
+    """Roteiro completo: diagnóstico, plano de melhorias e execução com aprovação."""
+    return (
+        "Faça um diagnóstico do meu iPhone: device_info, battery_diagnostics, installed_apps, "
+        "crash_reports e, se disponível, process_cpu_memory e system_stats. "
+        "Depois apresente um plano priorizado de melhorias, separando (a) o que você pode fazer "
+        "pelas ferramentas e (b) o que eu preciso fazer em Ajustes. "
+        "Não execute nenhuma ação que altere o aparelho antes de eu aprovar cada uma."
     )
 
 

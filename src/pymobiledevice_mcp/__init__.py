@@ -1,3 +1,3 @@
-"""MCP server para diagnóstico de iPhone via pymobiledevice3."""
+"""MCP server para diagnóstico e melhoria de iPhone via pymobiledevice3."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pymobiledevice-mcp"
-version = "0.1.0"
-description = "MCP server para diagnóstico de memória e performance de iPhone via pymobiledevice3"
+version = "0.2.0"
+description = "MCP server para diagnóstico e melhoria de memória e performance de iPhone via pymobiledevice3"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [{ name = "Luan Dela Vega" }]

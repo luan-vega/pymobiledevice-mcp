@@ -70,3 +70,72 @@ def test_syslog_snapshot_filters_partial_output(mock_run):
 def test_syslog_snapshot_clamps_seconds(mock_run):
     server.syslog_snapshot(seconds=999)
     assert mock_run.call_args.kwargs["timeout"] == 60
+
+
+# --- Ações de melhoria ------------------------------------------------------
+
+@pytest.fixture
+def actions_on(monkeypatch):
+    monkeypatch.setenv("PMD3_MCP_ALLOW_ACTIONS", "1")
+
+
+def test_actions_disabled_by_default(mock_run, monkeypatch):
+    monkeypatch.delenv("PMD3_MCP_ALLOW_ACTIONS", raising=False)
+    out = server.restart_device(confirm=True)
+    assert "desativadas" in out
+    mock_run.assert_not_called()
+
+
+def test_actions_without_confirm_only_preview(mock_run, actions_on):
+    out = server.uninstall_app("com.example.game")
+    assert out.startswith("PRÉVIA")
+    mock_run.assert_not_called()
+
+
+def test_uninstall_with_confirm_runs(mock_run, actions_on):
+    server.uninstall_app("com.example.game", confirm=True, udid="ABC")
+    assert called_args(mock_run)[3:] == ["apps", "uninstall", "com.example.game", "--udid", "ABC"]
+
+
+@pytest.mark.parametrize("bad", ["com.apple.mobilesafari", "foo; rm -rf", "semponto"])
+def test_uninstall_rejects_bad_or_system_ids(mock_run, actions_on, bad):
+    assert server.uninstall_app(bad, confirm=True).startswith("ERRO")
+    mock_run.assert_not_called()
+
+
+def test_kill_process_uses_tunnel(mock_run, actions_on):
+    server.kill_process(1234, confirm=True)
+    assert called_args(mock_run)[3:] == ["developer", "dvt", "kill", "1234", "--tunnel", ""]
+
+
+def test_kill_process_rejects_launchd(mock_run, actions_on):
+    assert server.kill_process(1, confirm=True).startswith("ERRO")
+    mock_run.assert_not_called()
+
+
+def test_clear_crash_and_restart(mock_run, actions_on):
+    server.clear_crash_reports(confirm=True)
+    assert called_args(mock_run)[3:] == ["crash", "clear"]
+    server.restart_device(confirm=True)
+    assert called_args(mock_run)[3:] == ["diagnostics", "restart"]
+
+
+def test_installed_apps_sorted_by_size(mock_run):
+    import json
+    data = {
+        "com.small": {"ApplicationType": "User", "CFBundleDisplayName": "Small",
+                      "StaticDiskUsage": 10 * 1048576, "DynamicDiskUsage": 0},
+        "com.big": {"ApplicationType": "User", "CFBundleDisplayName": "Big",
+                    "StaticDiskUsage": 100 * 1048576, "DynamicDiskUsage": 900 * 1048576},
+        "com.apple.x": {"ApplicationType": "System"},
+    }
+    mock_run.return_value = completed(stdout=json.dumps(data))
+    lines = server.installed_apps().splitlines()
+    assert "Big" in lines[1] and "1,000 MB" in lines[1]
+    assert "Small" in lines[2]
+    assert not any("com.apple.x" in l for l in lines)
+
+
+def test_installed_apps_falls_back_to_raw(mock_run):
+    mock_run.return_value = completed(stdout="formato inesperado")
+    assert server.installed_apps() == "formato inesperado"
