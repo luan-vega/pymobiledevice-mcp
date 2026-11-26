@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pymobiledevice-mcp"
+version = "0.1.0"
+description = "MCP server para diagnóstico de memória e performance de iPhone via pymobiledevice3"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Luan Dela Vega" }]
+dependencies = [
+    "mcp>=2.3,<3",
+    "pymobiledevice3>=4.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+pymobiledevice-mcp = "pymobiledevice_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pymobiledevice_mcp"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
